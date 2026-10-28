@@ -3,13 +3,13 @@
   "info": {
     "title": "SDK-Bot Conversations API",
     "version": "1.0.0",
-    "description": "Contratos propuestos F1A; endpoints aún no implementados. Semántica: docs/SPEC-OPERATIVA-V1.md. expectedVersion = controlVersion textual. Formatos unicode-text y x-maxUtf8Bytes requieren validador del paquete; sin coerción ni defaults aplicados."
+    "description": "Contrato de la API de conversaciones del panel. expectedVersion = controlVersion textual. Los formatos unicode-text y x-maxUtf8Bytes se validan en runtime; sin coerción ni defaults aplicados."
   },
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "servers": [
     {
       "url": "/api/v1",
-      "description": "Panel público con sesión; sesión implementada en F1B."
+      "description": "Panel público autenticado mediante una sesión."
     }
   ],
   "security": [
@@ -980,7 +980,7 @@
         "type": "apiKey",
         "in": "cookie",
         "name": "sdkbot_session",
-        "description": "Cookie OAuth existente del panel; integración de API v1 y actor firmado al gateway en F1B. Nunca tokens de proveedor."
+        "description": "Cookie de sesión OAuth del panel; no contiene tokens de proveedor."
       }
     },
     "parameters": {

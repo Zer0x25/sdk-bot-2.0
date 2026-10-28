@@ -1,61 +1,31 @@
-# SDK-Bot — Deploy en Windows (PC)
+# Inicio en Windows
 
-En Windows no hay supervisor (como systemd o runit): los dos procesos corren
-en terminales que tú mantienes abiertas. Para producción real en Windows usa
-el **Programador de tareas** de Windows (arrancar al inicio, reiniciar en fallo).
+El repositorio incluye dos launchers `.bat`: uno para Brain y otro para Gateway. No hay un launcher Windows incluido para el panel.
 
-> El código del bot es IDÉNTICO en Linux, Windows y Termux (instancia única,
-> logs rotados, pool de concurrencia, reconnect con backoff).
+## Requisitos
 
-## Setup (una sola vez)
-
-```powershell
-cd C:\ruta\a\SDK-Bot\brain
-python -m venv venv
-venv\Scripts\pip install -r ..\apps\brain\requirements.txt
-cd ..\apps\gateway
-npm install
-cd ..\panel
-npm install
-# crear brain\.env con las API keys (copia de brain\.env.example si existe)
-```
+- Python 3.12 o superior disponible en `PATH`.
+- Node.js 22.13 o superior.
+- Un clon del repositorio con el estado runtime local bajo `brain/` y `gateway/`.
 
 ## Arranque
 
-Abre **las terminales necesarias** (PowerShell o CMD):
+Abre dos terminales desde la raíz del repositorio, en este orden:
 
-```powershell
-# Terminal 1 — Brain (primero siempre, puerto :5100)
-cd C:\ruta\a\SDK-Bot
+```bat
 deploy\windows\startBrain.bat
+```
 
-# Terminal 2 — Gateway (después del brain, bus interno :5400)
+```bat
 deploy\windows\startGateway.bat
-
-# Terminal 3 — Panel Web (opcional, puerto :5201)
-cd C:\ruta\a\SDK-Bot\apps\panel
-$env:NODE_PATH = (Resolve-Path ..\gateway\node_modules).Path
-node index.js
-# Acceso en el navegador: http://localhost:5201
 ```
 
-- **Ctrl+C** detiene cada proceso (libera el lock de instancia única).
-- Si arrancas un segundo gateway/brain mientras el primero corre, se bloqueará
-  solo con un mensaje claro (protección de instancia única).
-- Logs: `gateway\logs\gateway.log` y `brain\logs\brain.log` (rotación 5MB × 3).
+`startBrain.bat` crea `brain\venv` si falta, instala `apps\brain\requirements.txt` y ejecuta `apps\brain\main.py`. `startGateway.bat` comprueba las dependencias/contracts instalados y ejecuta `apps\gateway\index.js`; instala dependencias con `npm ci` cuando faltan o no coinciden.
 
-## Producción: Programador de tareas
+Mantén ambas terminales abiertas. `Ctrl+C` detiene cada proceso. Los scripts no configuran un supervisor ni programan el arranque automático.
 
-1. `win+R` → `taskschd.msc` → Crear tarea
-2. **Disparadores:** Al iniciar sesión
-3. **Acciones:** Programa = `deploy\windows\startBrain.bat` / `startGateway.bat`
-   (dos tareas, una por proceso; Carpeta de inicio = `C:\ruta\a\SDK-Bot`)
-4. **Configuración:** marcar "Reiniciar si falla" (cada 1 min) — esto sustituye
-   al `Restart=always` de systemd
+## Sesión y reset
 
-## Re-sincronizar libreta (QR nuevo)
+La sesión de WhatsApp y el estado runtime quedan bajo `gateway\`; la configuración/estado del Brain, bajo `brain\`. Protégelos y no los incluyas en Git. Para renovar solo la sesión o hacer un reset de fábrica, sigue [reset seguro](../../docs/RESET-SEGURO.md) y detén antes los procesos.
 
-```powershell
-cd C:\ruta\a\SDK-Bot\apps\gateway
-npm run reset
-```
+El flujo Windows no se ejecuta en el workflow de CI, que valida en Ubuntu; esta guía no afirma pruebas de despliegue en Windows.

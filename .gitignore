@@ -58,3 +58,6 @@ gateway/data/
 gateway/panel/web/dist/
 apps/gateway/panel/web/dist/
 apps/panel/web/dist/
+
+# Salida generada localmente por el benchmark de conversaciones
+docs/evidence/conversations-load-report.json

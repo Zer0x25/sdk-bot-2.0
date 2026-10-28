@@ -7,8 +7,12 @@ const os = require('node:os');
 const path = require('node:path');
 const { assertValid } = require('@sdk-bot/contracts');
 const { uuidV5, canonicalJson, xorshift32, effectiveResourceLimits, parseCpuMax, parseCpuSet, parseMemoryMax,
-    generateDataset, importDataset } = require('../scripts/conversation-load');
+    generateDataset, importDataset, DEFAULT_REPORT_PATH } = require('../scripts/conversation-load');
 const { createArchive } = require('../services/conversations');
+
+test('default benchmark report destination uses a neutral generated filename', () => {
+    assert.equal(DEFAULT_REPORT_PATH, path.resolve(__dirname, '../../../docs/evidence/conversations-load-report.json'));
+});
 
 test('UUIDv5 generator matches the RFC 4122 reference vector', () => {
     assert.equal(uuidV5('www.widgets.com', '6ba7b810-9dad-11d1-80b4-00c04fd430c8'),
@@ -49,7 +53,7 @@ test('xorshift32 produces the same bounded stream from the same seed', () => {
     assert.ok(a.every(value => value >= 0 && value < 1));
 });
 
-test('F2E.2 profile detection uses effective cgroup v2 quota and memory caps', () => {
+test('benchmark profile detection uses effective cgroup v2 quota and memory caps', () => {
     const files = new Map([
         ['/proc/self/cgroup', '0::/user.slice/benchmark.scope\n'],
         ['/fake/cgroup/user.slice/benchmark.scope/cpu.max', '200000 100000'],

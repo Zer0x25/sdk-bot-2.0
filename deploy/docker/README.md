@@ -1,18 +1,19 @@
 # Producción con Docker Compose
 
-La producción Linux usa tres contenedores: `brain`, `gateway` y `panel`. El
-código es el mismo que en desarrollo; Docker aporta aislamiento, reinicio
-automático y persistencia mediante volúmenes.
+Compose define cuatro servicios: `brain`, `stt`, `gateway` y `panel`. El panel es un proceso distinto del Gateway; no conectes un segundo Gateway al mismo estado de WhatsApp.
 
-## Preparar Y Arrancar
+## Requisitos previos
 
-1. Crea `brain/.env` con las API keys. No lo versiones.
-2. Configura `gateway/panel/.env` con OAuth. Proporciona a Compose la variable
-   `SDK_PANEL_GATEWAY_SECRET` (secreto servidor >=32 bytes, diferente del de cookie
-   y de claves IA) mediante el entorno del servicio o un archivo de entorno privado
-   pasado con `--env-file`. Compose la exige y la inyecta a gateway/panel; definirla
-   solo en el env_file del panel no la entrega al gateway. No versionar secretos.
-3. Desde la raíz ejecuta:
+- Docker Engine y Docker Compose.
+- La red Docker externa `proxy_net` debe existir y el reverse proxy debe conectarse a ella.
+- `brain/.env` con la configuración del Brain y `gateway/panel/.env` con OAuth, ambos protegidos y fuera de Git.
+- `SDK_PANEL_GATEWAY_SECRET` disponible para la interpolación de Compose y con el mismo valor entregado a Gateway y panel. Debe ser un secreto servidor independiente de la cookie y de las claves IA.
+
+El panel corre en el puerto 3005 dentro de la red del proxy (`sdk-bot-panel:3005`); Compose no publica ese puerto en el host. Brain, bus interno y status tampoco se publican al exterior. Configura el reverse proxy para apuntar solo al panel.
+
+## Construir y arrancar
+
+Desde la raíz del repositorio:
 
 ```bash
 docker compose -f deploy/docker/compose.yml build
@@ -21,32 +22,21 @@ docker compose -f deploy/docker/compose.yml ps
 docker compose -f deploy/docker/compose.yml logs -f gateway
 ```
 
-Compose sirve el panel en `:3005` interno a través de la red externa `proxy_net`
-para Caddy; no publica puertos del panel, brain, bus ni status en el host.
-El panel ejecuta `node /app/apps/panel/index.js`, sin abrir otra sesión de
-WhatsApp. Gateway y panel instalan contracts desde `packages/contracts` como
-dependencia local, sin instalar el workspace raíz en la imagen. Configuración y límites:
-[frontera F1B](../../docs/FRONTERA-AUTENTICADA-V1.md).
+En producción OAuth está requerido. Configura las credenciales y la URL pública antes de iniciar; los detalles están en [seguridad del panel](../../docs/FRONTERA-AUTENTICADA-V1.md) y [OAuth](../../docs/OAUTH-LESSONS.md).
 
-La nueva base React/Vite se construye en una etapa Docker separada y el mismo
-proceso del panel puede servirla en `/inbox`. Para verla durante esta transición,
-define `PANEL_CONVERSATIONS_UI_ENABLED=true` en el entorno de Compose; por defecto
-permanece apagada y la interfaz legacy sigue en `/`. Esta primera entrega es solo
-el sistema visual y la navegación: todavía no conecta el historial ni habilita
-filtros, envío o control humano.
+La UI React de conversaciones se sirve en `/inbox` cuando `PANEL_CONVERSATIONS_UI_ENABLED=true`; por defecto permanece apagada. Para activarla al levantar Compose:
 
-## Estado Y Operación
+```bash
+PANEL_CONVERSATIONS_UI_ENABLED=true docker compose -f deploy/docker/compose.yml up -d --build
+```
 
-- `sdk-bot-production-state` conserva la sesión de WhatsApp, agenda, settings,
-  cola, broadcasts y memoria SQLite.
-- `brain/profiles/` se monta desde el repositorio para que los perfiles SOUL
-  editados por el panel no desaparezcan al recrear la imagen.
-- Los volúmenes `sdk-bot-production-gateway-logs` y
-  `sdk-bot-production-brain-logs` conservan los logs que consume el panel.
-- Para detener sin borrar datos: `docker compose -f deploy/docker/compose.yml down`.
-- Para actualizar: `docker compose -f deploy/docker/compose.yml build --pull && docker compose -f deploy/docker/compose.yml up -d`.
-- `docker compose down -v` es destructivo: borra el estado persistente y exige
-  volver a vincular WhatsApp.
+## Estado y mantenimiento
 
-El modo desarrollo no usa Compose: arranca brain, gateway y panel con
-`bash deploy/linux/dev.sh up all` (o por componente `up brain`, `up gateway panel`).
+- `sdk-bot-production-state` contiene el estado persistente del Gateway/Brain, incluida la sesión de WhatsApp y el archivo de conversaciones.
+- `sdk-bot-production-gateway-logs` y `sdk-bot-production-brain-logs` guardan logs.
+- `sdk-bot-production-stt-models` conserva la caché de modelos de STT.
+- `brain/profiles/` se monta desde el repositorio.
+- `docker compose ... down` detiene servicios sin eliminar volúmenes.
+- `docker compose ... down -v` es destructivo y elimina los volúmenes administrados por Compose.
+
+El repositorio no configura backups programados. Para copias offline y el chequeo read-only de una base candidata, sigue [operación y recuperación](../../docs/OPERACION-RECUPERACION.md). No restaures un snapshot antiguo sobre el volumen activo como rollback de código.

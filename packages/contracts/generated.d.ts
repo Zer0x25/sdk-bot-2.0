@@ -493,7 +493,7 @@ export interface components {
                 requestId: components["schemas"]["Id"];
             };
         };
-        /** @description Invalidaciones mínimas sin copia de cuerpos/media. Leer recurso autorizado; publicar tras commit; replay durable F3. */
+        /** @description Invalidaciones mínimas sin cuerpos ni media. El cliente lee el recurso autorizado; el servidor publica después del commit y admite replay durable. */
         Event: {
             cursor: components["schemas"]["EventCursor"];
             data: {

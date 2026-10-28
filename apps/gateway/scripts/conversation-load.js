@@ -11,6 +11,7 @@ const { setTimeout: delay } = require('node:timers/promises');
 const { assertValid } = require('@sdk-bot/contracts');
 const { createArchive } = require('../services/conversations');
 const { REPO_ROOT } = require('../lib/repoPaths');
+const DEFAULT_REPORT_PATH = path.join(REPO_ROOT, 'docs/evidence/conversations-load-report.json');
 
 const FIXTURE_PATH = path.join(REPO_ROOT, 'docs/fixtures/v1-acceptance.json');
 const SCHEMA_PATH = path.join(REPO_ROOT, 'packages/contracts/schema.json');
@@ -649,32 +650,32 @@ async function runFull({ reportPath, temporaryRoot } = {}) {
     const tempFreeBytesAtStart = Number(tempStats.bavail) * Number(tempStats.bsize);
     const minimumTempBytes = 6 * 1024 ** 3;
     if (tempFreeBytesAtStart < minimumTempBytes) {
-        throw new Error(`F2E.2 necesita al menos 6 GiB temporales libres; ${selectedTempRoot} tiene ${(tempFreeBytesAtStart / 1024 ** 3).toFixed(1)} GiB. Configure SDK_CONVERSATION_LOAD_TMPDIR.`);
+        throw new Error(`Benchmark de conversaciones necesita al menos 6 GiB temporales libres; ${selectedTempRoot} tiene ${(tempFreeBytesAtStart / 1024 ** 3).toFixed(1)} GiB. Configure SDK_CONVERSATION_LOAD_TMPDIR.`);
     }
     const environment = childTelemetry();
-    const workdir = await fsp.mkdtemp(path.join(selectedTempRoot, 'sdkbot-f2e2-'));
+    const workdir = await fsp.mkdtemp(path.join(selectedTempRoot, 'sdkbot-conversations-benchmark-'));
     const datasetDirectory = path.join(workdir, 'dataset');
     const databasePath = path.join(workdir, 'archive.db');
     const snapshotPath = path.join(workdir, 'baseline.db');
     const reports = [];
-    const reportDestination = path.resolve(reportPath || path.join(REPO_ROOT, 'docs/evidence/F2E2-load-report.json'));
+    const reportDestination = path.resolve(reportPath || DEFAULT_REPORT_PATH);
     let archive, stage = 'generate dataset';
     try {
-        process.stdout.write(`F2E.2: generando ${profile.uniqueMessages.toLocaleString('es')} mensajes sintéticos…\n`);
+        process.stdout.write(`Benchmark de conversaciones: generando ${profile.uniqueMessages.toLocaleString('es')} mensajes sintéticos…\n`);
         const dataset = await generateDataset(datasetDirectory);
-        process.stdout.write(`F2E.2: JSONL generado; importando en lotes de 1.000…\n`);
+        process.stdout.write(`Benchmark de conversaciones: JSONL generado; importando en lotes de 1.000…\n`);
         archive = createArchive({ path: databasePath, timeoutMs: 60_000 });
         let ready = await archive.ready;
         stage = 'import dataset';
         const imported = await importDataset(archive, dataset, progress => {
-            process.stdout.write(`F2E.2: ${progress.imported.toLocaleString('es')}/${progress.total.toLocaleString('es')} mensajes\n`);
+            process.stdout.write(`Benchmark de conversaciones: ${progress.imported.toLocaleString('es')}/${progress.total.toLocaleString('es')} mensajes\n`);
         });
-        process.stdout.write('F2E.2: importación terminada; cerrando worker para validar el archivo…\n');
+        process.stdout.write('Benchmark de conversaciones: importación terminada; cerrando worker para validar el archivo…\n');
         stage = 'reopen archive for full validation';
         await archive.close();
         archive = createArchive({ path: databasePath, timeoutMs: FULL_VALIDATION_TIMEOUT_MS });
         ready = await archive.ready;
-        process.stdout.write('F2E.2: comprobando integridad y claves foráneas…\n');
+        process.stdout.write('Benchmark de conversaciones: comprobando integridad y claves foráneas…\n');
         stage = 'integrity and foreign-key checks';
         const afterImport = await archive.diagnostics();
         const expectedAliases = Array.from({ length: profile.contacts }, (_, c) => c)
@@ -684,13 +685,13 @@ async function runFull({ reportPath, temporaryRoot } = {}) {
             || imported.duplicateCount !== profile.duplicateDeliveries || afterImport.seq !== String(profile.uniqueMessages)) {
             throw new Error(`post-import invariants failed: ${JSON.stringify({ afterImport, imported: imported.imported, duplicates: imported.duplicateCount })}`);
         }
-        process.stdout.write('F2E.2: verificando ventana de eventos…\n');
+        process.stdout.write('Benchmark de conversaciones: verificando ventana de eventos…\n');
         stage = 'event tail verification';
         const eventTail = await readEventTail(archive, profile.uniqueMessages);
         if (eventTail.events !== profile.retainedReplayEvents || eventTail.lastSeq !== String(profile.uniqueMessages)) {
             throw new Error(`event tail mismatch: ${JSON.stringify(eventTail)}`);
         }
-        process.stdout.write('F2E.2: creando snapshot SQLite…\n');
+        process.stdout.write('Benchmark de conversaciones: creando snapshot SQLite…\n');
         stage = 'baseline snapshot';
         await archive.backup(snapshotPath);
         await archive.close();
@@ -699,19 +700,19 @@ async function runFull({ reportPath, temporaryRoot } = {}) {
         await fsp.rm(`${databasePath}-wal`, { force: true });
         await fsp.rm(`${databasePath}-shm`, { force: true });
         for (const file of Object.values(dataset.files)) await fsp.rm(file.path, { force: true });
-        process.stdout.write(`F2E.2: snapshot íntegro; ${imported.messagesPerSecond.toFixed(0)} mensajes/s.\n`);
+        process.stdout.write(`Benchmark de conversaciones: snapshot íntegro; ${imported.messagesPerSecond.toFixed(0)} mensajes/s.\n`);
 
         for (let i = 0; i < profile.warmupRuns + profile.measuredRuns; i++) {
             const kind = i < profile.warmupRuns ? 'warmup' : 'measured';
             const index = kind === 'warmup' ? i : i - profile.warmupRuns;
             const runPath = path.join(workdir, `run-${i + 1}.db`);
             stage = `${kind} ${index + 1} snapshot copy`;
-            process.stdout.write(`F2E.2: preparando copia para ${kind} ${index + 1}…\n`);
+            process.stdout.write(`Benchmark de conversaciones: preparando copia para ${kind} ${index + 1}…\n`);
             await fsp.copyFile(snapshotPath, runPath);
             stage = `${kind} ${index + 1} archive startup`;
             const runArchive = createArchive({ path: runPath, timeoutMs: FULL_VALIDATION_TIMEOUT_MS });
             await runArchive.ready;
-            process.stdout.write(`F2E.2: ${kind} ${index + 1} — 150 s de ingesta concurrente y 4.000 consultas…\n`);
+            process.stdout.write(`Benchmark de conversaciones: ${kind} ${index + 1} — 150 s de ingesta concurrente y 4.000 consultas…\n`);
             stage = `${kind} ${index + 1}`;
             const result = await runMeasuredScenario(runArchive, dataset, i, kind);
             reports.push(result);
@@ -719,10 +720,10 @@ async function runFull({ reportPath, temporaryRoot } = {}) {
             await fsp.rm(runPath, { force: true });
             await fsp.rm(`${runPath}-wal`, { force: true });
             await fsp.rm(`${runPath}-shm`, { force: true });
-            process.stdout.write(`F2E.2: ${kind} ${index + 1} terminado; RSS pico ${(result.rssPeakBytes / 1024 ** 2).toFixed(1)} MiB.\n`);
+            process.stdout.write(`Benchmark de conversaciones: ${kind} ${index + 1} terminado; RSS pico ${(result.rssPeakBytes / 1024 ** 2).toFixed(1)} MiB.\n`);
         }
 
-        process.stdout.write('F2E.2: probando límites FIFO por elementos/bytes y cursor Telegram…\n');
+        process.stdout.write('Benchmark de conversaciones: probando límites FIFO por elementos/bytes y cursor Telegram…\n');
         stage = 'saturation scenario';
         const saturation = await saturationScenario(snapshotPath, workdir, dataset);
         const finalReport = {
@@ -738,14 +739,14 @@ async function runFull({ reportPath, temporaryRoot } = {}) {
             runs: reports,
             saturation,
             unsupported: {
-                takeoverCommitMs: 'F5 control API is not implemented in the current roadmap phase.',
+                takeoverCommitMs: 'This benchmark does not measure takeover commit latency.',
                 profileDeviation: environment.profileMatch ? null : 'Runner effective limits are not the 2-vCPU / 4-GiB reference profile.',
                 authorProjection: 'ArchiveInput currently stores imported outbound authors as unknown; source DTO JSONL preserves the deterministic customer/ai/operator fixture.',
             },
         };
         await fsp.mkdir(path.dirname(reportDestination), { recursive: true });
         await fsp.writeFile(reportDestination, `${canonicalJson(finalReport)}\n`, { mode: 0o600 });
-        process.stdout.write(`F2E.2: informe guardado en ${reportDestination}\n`);
+        process.stdout.write(`Benchmark de conversaciones: informe guardado en ${reportDestination}\n`);
         return { reportPath: reportDestination, report: finalReport };
     } catch (error) {
         if (error && typeof error === 'object') error.benchmarkStage = stage;
@@ -757,6 +758,7 @@ async function runFull({ reportPath, temporaryRoot } = {}) {
 }
 
 module.exports = { uuidV5, canonicalJson, xorshift32, makeProfile, effectiveResourceLimits, parseCpuMax,
+    DEFAULT_REPORT_PATH,
     parseCpuSet, parseMemoryMax, generateDataset, importDataset, runFull };
 
 if (require.main === module) {
@@ -770,10 +772,10 @@ if (require.main === module) {
         const tempIndex = args.indexOf('--tmpdir');
         const temporaryRoot = tempIndex < 0 ? undefined : args[tempIndex + 1];
         runFull({ reportPath, temporaryRoot }).then(({ reportPath: destination, report }) => {
-            process.stdout.write(`F2E.2 status: import=${report.database.importMessagesPerSecond.toFixed(0)} msg/s; runs=${report.runs.length}; report=${destination}\n`);
+            process.stdout.write(`Benchmark de conversaciones: estado import=${report.database.importMessagesPerSecond.toFixed(0)} msg/s; runs=${report.runs.length}; report=${destination}\n`);
         }).catch(error => {
             const code = typeof error?.code === 'string' && /^[A-Z0-9_]{1,64}$/.test(error.code) ? error.code : error?.name || 'UNKNOWN';
-            process.stderr.write(`F2E.2 falló en ${error?.benchmarkStage || 'runner'} (${code}): ${error.message}\n`);
+            process.stderr.write(`Benchmark de conversaciones falló en ${error?.benchmarkStage || 'runner'} (${code}): ${error.message}\n`);
             process.exitCode = 1;
         });
     }
