@@ -71,6 +71,14 @@ async function requestJson(pathname: string, init: RequestInit = {}, signal?: Ab
   return payload;
 }
 
+export async function setGlobalProfile(profileKey: string) {
+  const response = await fetch('/api/v1/global-profile', { method: 'POST', credentials: 'same-origin',
+    headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ profileKey }) });
+  if (!response.ok) throw new AssistantApiError(response.status, 'No se pudo cambiar el perfil global.');
+  const payload: unknown = await response.json();
+  if (!isRecord(payload) || payload.profileKey !== profileKey) throw new AssistantApiError(502, 'Respuesta de perfil global inválida.');
+}
+
 export async function getEditableProfiles(signal?: AbortSignal): Promise<ProfileSummary[]> {
   const payload = await requestJson('/profiles', {}, signal);
   if (!isRecord(payload) || !Array.isArray(payload.profiles)) throw new AssistantApiError(502, 'La lista de perfiles tiene un formato inválido.');

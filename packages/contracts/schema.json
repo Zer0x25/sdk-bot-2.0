@@ -624,13 +624,20 @@
         },
         "policyVersion": {
           "$ref": "#/$defs/Version"
-        }
+        },
+        "globalProfileKey": { "type": ["string", "null"], "maxLength": 80 }
       },
       "required": [
         "globalMode",
         "globalPaused",
         "policyVersion"
       ],
+      "additionalProperties": false
+    },
+    "GlobalProfileResponse": {
+      "type": "object",
+      "properties": { "profileKey": { "type": "string", "minLength": 1, "maxLength": 80 } },
+      "required": ["profileKey"],
       "additionalProperties": false
     },
     "EventCursor": {

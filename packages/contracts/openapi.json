@@ -56,6 +56,24 @@
         }
       }
     },
+    "/global-profile": {
+      "post": {
+        "operationId": "setGlobalProfile",
+        "description": "Selecciona el perfil global existente; requiere permiso administrativo.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "profileKey": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,80}$" } }, "required": ["profileKey"], "additionalProperties": false } } }
+        },
+        "responses": {
+          "200": { "description": "Perfil global seleccionado.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GlobalProfileResponse" } } } },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "$ref": "#/components/responses/403" },
+          "409": { "$ref": "#/components/responses/409" },
+          "422": { "$ref": "#/components/responses/422" },
+          "503": { "$ref": "#/components/responses/503" }
+        }
+      }
+    },
     "/accounts": {
       "get": {
         "operationId": "listAccounts",
@@ -1143,6 +1161,9 @@
       },
       "GlobalPolicy": {
         "$ref": "./schema.json#/$defs/GlobalPolicy"
+      },
+      "GlobalProfileResponse": {
+        "$ref": "./schema.json#/$defs/GlobalProfileResponse"
       },
       "EventCursor": {
         "$ref": "./schema.json#/$defs/EventCursor"

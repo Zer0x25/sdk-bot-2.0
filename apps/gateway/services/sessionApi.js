@@ -7,6 +7,8 @@ const { requireCapability } = require('../lib/panelContext');
 const { isHandoffActive } = require('./contactsRepository');
 const { executeAssistantTool } = require('./assistantTools');
 const { normalizeSearchQuery } = require('./conversations/searchQuery');
+const { state } = require('../config');
+const { setCurrentProfile } = require('./stateService');
 
 const PAGE_SCAN = 250;
 const PAGE_SCAN_MAX = 5000;
@@ -18,6 +20,7 @@ const CAPABILITIES = {
 function capabilityFor(method, pathname) {
     if (method === 'GET' && (/^\/v1\/(session|accounts|profiles|summary|conversations(?:\/[^/]+(?:\/(?:messages|pending-resume|outbound-reconciliations|search))?)?|operations\/[^/]+|events)$/.test(pathname)
         || /^\/v1\/attachments\/[0-9a-f-]{36}$/.test(pathname))) return 'conversations:read';
+    if (method === 'POST' && pathname === '/v1/global-profile') return 'admin:write';
     if (method === 'POST' && /^\/v1\/conversations\/[^/]+\/(takeover|release)$/.test(pathname)) return 'control:write';
     if (method === 'POST' && /^\/v1\/conversations\/[^/]+\/assistance$/.test(pathname)) return 'admin:write';
     if (method === 'POST' && /^\/v1\/conversations\/[^/]+\/messages$/.test(pathname)) return 'messages:send';
@@ -600,8 +603,28 @@ function createSessionApi(getPolicy, archive, getContacts = () => ({}), getChann
             if (req.method === 'GET' && pathname === '/v1/session') {
                 rejectQuery(req);
                 const snapshot = await archive.snapshot();
-                const body = assertValid('SessionResponse', { actor: context.actor, policy: getPolicy(), snapshot });
+                const runtime = getPolicy();
+                const canonical = controlService && await controlService.isActive() ? await controlService.getPolicy() : null;
+                const policy = { ...runtime, ...(canonical ? { globalMode: canonical.globalMode, policyVersion: canonical.policyVersion } : {}),
+                    globalProfileKey: canonical ? canonical.globalProfileKey : state.CURRENT_PROFILE };
+                const body = assertValid('SessionResponse', { actor: context.actor, policy, snapshot });
                 return send(res, 200, body, context.requestId);
+            }
+            if (req.method === 'POST' && pathname === '/v1/global-profile') {
+                rejectQuery(req);
+                let request;
+                try { request = JSON.parse(requestBody.toString('utf8')); } catch { throw invalid(); }
+                if (!request || typeof request !== 'object' || Array.isArray(request) || Object.keys(request).length !== 1
+                    || typeof request.profileKey !== 'string' || !/^[A-Za-z0-9_.-]{1,80}$/.test(request.profileKey)) throw invalid();
+                const profiles = await getProfiles();
+                if (!Array.isArray(profiles) || !profiles.some(profile => profile?.key === request.profileKey)) throw invalid('Perfil no disponible.');
+                if (controlService && await controlService.isActive()) {
+                    await controlService.setGlobalPolicy({ globalProfileKey: request.profileKey, actorId: context.actor.id });
+                } else {
+                    const result = await setCurrentProfile(request.profileKey);
+                    if (!result.success) throw new BoundaryError(503, 'SERVICE_UNAVAILABLE', 'No se pudo cambiar el perfil.');
+                }
+                return send(res, 200, assertValid('GlobalProfileResponse', { profileKey: request.profileKey }), context.requestId);
             }
             if (req.method === 'GET' && pathname === '/v1/accounts') {
                 rejectQuery(req);

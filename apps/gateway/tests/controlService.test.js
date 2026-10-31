@@ -64,6 +64,36 @@ async function cutover(archive, migrationId) {
     await archive.finishControlCutover({ migrationId });
 }
 
+test('global profile API uses canonical policy, validates inventory and requires admin', async t => {
+    const { archive, migrationId } = await fixture(t);
+    await cutover(archive, migrationId);
+    const service = createControlService(archive, { validateProfile: async key => ['default', 'ventas'].includes(key) });
+    await service.setGlobalPolicy({ globalMode: 'ignored_all' });
+    const route = createSessionApi(() => ({ globalMode: 'allowed_all', globalPaused: false, policyVersion: '1' }),
+        archive, () => ({}), undefined, service, undefined, async () => [{ key: 'default' }, { key: 'ventas' }]);
+    const admin = { id: randomUUID(), displayName: 'Admin', capabilities: ['conversations:read', 'admin:write'] };
+    async function request(method, pathname, body, actor = admin) {
+        let status, response;
+        const res = { writeHead(value) { status = value; }, end(value) { response = JSON.parse(value); } };
+        try { await route({ method, url: pathname, headers: {} }, res, { actor, requestId: randomUUID() }, pathname,
+            body ? Buffer.from(JSON.stringify(body)) : Buffer.alloc(0)); }
+        catch (error) { return { status: error.status, code: error.code }; }
+        return { status, response };
+    }
+    const initial = await request('GET', '/v1/session');
+    assert.equal(initial.response.policy.globalProfileKey, 'default');
+    assert.equal(initial.response.policy.globalMode, 'ignored_all');
+    const before = await service.getPolicy();
+    assert.equal((await request('POST', '/v1/global-profile', { profileKey: 'ventas' },
+        { ...admin, capabilities: ['conversations:read'] })).status, 403);
+    assert.equal((await request('POST', '/v1/global-profile', { profileKey: 'missing' })).status, 422);
+    assert.deepEqual(await service.getPolicy(), before);
+    const updated = await request('POST', '/v1/global-profile', { profileKey: 'ventas' });
+    assert.equal(updated.status, 200);
+    assert.equal((await service.getPolicy()).globalMode, 'ignored_all');
+    assert.equal((await request('GET', '/v1/session')).response.policy.globalProfileKey, 'ventas');
+});
+
 test('F5.4 SQLite control applies global policy only to neutral contacts', () => {
     const row = { id: randomUUID(), account_id: randomUUID(), contact_id: randomUUID(), canonical_id: randomUUID(),
         identity_keys: [], access_policy: 'neutral', automation_mode: 'off', lifecycle: 'open', owner_id: null,

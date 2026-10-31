@@ -229,6 +229,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/global-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Selecciona el perfil global existente; requiere permiso administrativo. */
+        post: operations["setGlobalProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/operations/{operationId}": {
         parameters: {
             query?: never;
@@ -585,7 +602,11 @@ export interface components {
             /** @enum {string} */
             globalMode: "allowed_all" | "ignored_all";
             globalPaused: boolean;
+            globalProfileKey?: string | null;
             policyVersion: components["schemas"]["Version"];
+        };
+        GlobalProfileResponse: {
+            profileKey: string;
         };
         /** @description Nunca certifica historial completo del proveedor. */
         HistoryCoverage: {
@@ -1533,6 +1554,37 @@ export interface operations {
             404: components["responses"]["404"];
             409: components["responses"]["409"];
             410: components["responses"]["410"];
+            422: components["responses"]["422"];
+            503: components["responses"]["503"];
+        };
+    };
+    setGlobalProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    profileKey: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Perfil global seleccionado. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GlobalProfileResponse"];
+                };
+            };
+            401: components["responses"]["401"];
+            403: components["responses"]["403"];
+            409: components["responses"]["409"];
             422: components["responses"]["422"];
             503: components["responses"]["503"];
         };

@@ -10,6 +10,7 @@ import {
   getProfileFile,
   reloadProfiles,
   saveProfile,
+  setGlobalProfile,
   type ProfileSummary
 } from './api';
 
@@ -106,6 +107,18 @@ export function AssistantPage() {
     window.addEventListener('beforeunload', warnBeforeLeave);
     return () => window.removeEventListener('beforeunload', warnBeforeLeave);
   }, [dirty]);
+
+  const globalProfileMutation = useMutation({
+    mutationFn: setGlobalProfile,
+    onSuccess: async () => {
+      setError(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['assistant', 'session'] }),
+        queryClient.invalidateQueries({ queryKey: ['contacts', 'session'] })
+      ]);
+    },
+    onError: value => { setError(asError(value).message); void sessionQuery.refetch(); }
+  });
 
   const saveMutation = useMutation({
     mutationFn: ({ key, content }: { key: string; content: string }) => saveProfile(key, content),
@@ -287,6 +300,18 @@ export function AssistantPage() {
             : !canManage && <span className="assistant-permission">Vista de solo lectura</span>}
       </header>
 
+      {sessionQuery.isSuccess && <section aria-label="Perfil global">
+        {canManage ? <label>Perfil global activo
+          <select aria-label="Perfil global activo" value={sessionQuery.data.policy.globalProfileKey ?? ''}
+            disabled={globalProfileMutation.isPending || editableProfilesQuery.isPending || editableProfilesQuery.isError}
+            onChange={event => globalProfileMutation.mutate(event.currentTarget.value)}>
+            {!profiles.some(profile => profile.key === sessionQuery.data.policy.globalProfileKey) &&
+              <option value={sessionQuery.data.policy.globalProfileKey ?? ''}>{sessionQuery.data.policy.globalProfileKey || 'No disponible'}</option>}
+            {profiles.map(profile => <option key={profile.key} value={profile.key}>{profile.nombre}</option>)}
+          </select>
+        </label> : <p>Perfil global activo: {profiles.find(profile => profile.key === sessionQuery.data.policy.globalProfileKey)?.nombre ?? sessionQuery.data.policy.globalProfileKey ?? 'No disponible'}</p>}
+        <p>Los contactos sin perfil propio heredan el perfil global; los que tienen uno propio conservan su selección.</p>
+      </section>}
       {error && <p className="assistant-feedback is-error" role="alert">{error}</p>}
       {message && <p className="assistant-feedback is-message" role="status">{message}</p>}
 

@@ -17,6 +17,7 @@ function jsonResponse(value: unknown, status = 200) {
 function installAssistantApi(options: { canManage?: boolean; failSave?: boolean } = {}) {
   const profiles = new Map([['ventas', initialProfile], ['default', secondProfile]]);
   const calls: Array<{ path: string; method: string; body: unknown }> = [];
+  let globalProfile = 'default';
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), 'http://panel.local');
     const method = init?.method ?? 'GET';
@@ -28,8 +29,12 @@ function installAssistantApi(options: { canManage?: boolean; failSave?: boolean 
         id: actorId, displayName: 'Operador',
         capabilities: options.canManage ? ['conversations:read', 'admin:write'] : ['conversations:read']
       },
-      policy: { globalMode: 'ignored_all', globalPaused: false, policyVersion: '1' }, snapshot
+      policy: { globalMode: 'ignored_all', globalPaused: false, policyVersion: '1', globalProfileKey: globalProfile }, snapshot
     });
+    if (url.pathname === '/api/v1/global-profile' && method === 'POST') {
+      globalProfile = (body as { profileKey: string }).profileKey;
+      return jsonResponse({ profileKey: globalProfile });
+    }
     if (url.pathname === '/api/v1/profiles') return jsonResponse({ items: [
       { key: 'default', name: 'Predeterminado' }, { key: 'ventas', name: 'Ventas' }
     ] });
@@ -81,6 +86,27 @@ afterEach(() => {
 });
 
 describe('assistant profile management', () => {
+  it('shows and changes the active global profile without changing the editor selection', async () => {
+    const user = userEvent.setup();
+    const { calls } = installAssistantApi({ canManage: true });
+    renderAssistant();
+    const selector = await screen.findByRole('combobox', { name: 'Perfil global activo' });
+    expect(selector).toHaveValue('default');
+    expect(screen.getByText(/Los contactos sin perfil propio heredan/)).toBeInTheDocument();
+    await waitFor(() => expect(selector).toBeEnabled());
+    await user.selectOptions(selector, 'ventas');
+    await waitFor(() => expect(selector).toHaveValue('ventas'));
+    expect(calls.find(call => call.path === '/api/v1/global-profile')?.body).toEqual({ profileKey: 'ventas' });
+    expect(screen.getByRole('combobox', { name: 'Perfil seleccionado' })).toHaveValue('');
+  });
+
+  it('shows the active profile without allowing read-only sessions to change it', async () => {
+    const { calls } = installAssistantApi();
+    renderAssistant();
+    expect(await screen.findByText(/Perfil global activo: Predeterminado/)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Perfil global activo' })).not.toBeInTheDocument();
+    expect(calls.some(call => call.path === '/api/v1/global-profile')).toBe(false);
+  });
   it('shows only v1 profile names to read-only sessions', async () => {
     const { calls } = installAssistantApi();
     renderAssistant();
@@ -99,7 +125,7 @@ describe('assistant profile management', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     renderAssistant();
 
-    await screen.findByRole('option', { name: /Ventas/ });
+    await screen.findByRole('option', { name: /^Ventas \(ventas\)$/ });
     await user.selectOptions(screen.getByRole('combobox', { name: 'Perfil seleccionado' }), 'ventas');
     const editor = await screen.findByRole('textbox', { name: 'Archivo Markdown' });
     expect(editor).toHaveValue(initialProfile);
@@ -117,7 +143,7 @@ describe('assistant profile management', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     renderAssistant();
 
-    await screen.findByRole('option', { name: /Ventas/ });
+    await screen.findByRole('option', { name: /^Ventas \(ventas\)$/ });
     await user.selectOptions(screen.getByRole('combobox', { name: 'Perfil seleccionado' }), 'ventas');
     const editor = await screen.findByRole('textbox', { name: 'Archivo Markdown' });
     const updated = `${initialProfile}\nNo descartar.\n`;
@@ -134,7 +160,7 @@ describe('assistant profile management', () => {
     const { calls } = installAssistantApi({ canManage: true });
     renderAssistant();
 
-    await screen.findByRole('option', { name: /Ventas/ });
+    await screen.findByRole('option', { name: /^Ventas \(ventas\)$/ });
     await user.selectOptions(screen.getByRole('combobox', { name: 'Perfil seleccionado' }), 'ventas');
     const editor = await screen.findByRole('textbox', { name: 'Archivo Markdown' });
     const updated = `${initialProfile}\n## Formato\nBreve.\n`;
@@ -151,7 +177,7 @@ describe('assistant profile management', () => {
     installAssistantApi({ canManage: true, failSave: true });
     renderAssistant();
 
-    await screen.findByRole('option', { name: /Ventas/ });
+    await screen.findByRole('option', { name: /^Ventas \(ventas\)$/ });
     await user.selectOptions(screen.getByRole('combobox', { name: 'Perfil seleccionado' }), 'ventas');
     const editor = await screen.findByRole('textbox', { name: 'Archivo Markdown' });
     const updated = `${initialProfile}\nCambio sin confirmar.\n`;
@@ -169,7 +195,7 @@ describe('assistant profile management', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     renderAssistant();
 
-    await screen.findByRole('option', { name: /Ventas/ });
+    await screen.findByRole('option', { name: /^Ventas \(ventas\)$/ });
     await user.click(screen.getByRole('button', { name: 'Nuevo' }));
     await user.type(screen.getByRole('textbox', { name: 'Clave del perfil' }), 'ventas');
     await user.type(screen.getByRole('textbox', { name: 'Archivo Markdown' }), initialProfile);
@@ -216,7 +242,7 @@ describe('assistant profile management', () => {
     const { calls } = installAssistantApi({ canManage: true });
     renderAssistant();
 
-    await screen.findByRole('option', { name: /Ventas/ });
+    await screen.findByRole('option', { name: /^Ventas \(ventas\)$/ });
     await user.selectOptions(screen.getByRole('combobox', { name: 'Perfil seleccionado' }), 'ventas');
     await screen.findByRole('textbox', { name: 'Archivo Markdown' });
     await user.click(screen.getByRole('button', { name: 'Ver prompt compilado' }));
@@ -231,7 +257,7 @@ describe('assistant profile management', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderAssistant();
 
-    await screen.findByRole('option', { name: /Ventas/ });
+    await screen.findByRole('option', { name: /^Ventas \(ventas\)$/ });
     await user.selectOptions(screen.getByRole('combobox', { name: 'Perfil seleccionado' }), 'ventas');
     await screen.findByRole('textbox', { name: 'Archivo Markdown' });
     await user.click(screen.getByRole('button', { name: 'Eliminar' }));

@@ -9,6 +9,7 @@ const { readBytes, BoundaryError, sendError } = require('../gateway/lib/httpBoun
 function responseContract(method, pathname, status) {
     if (status >= 400) return 'ErrorResponse';
     if (method === 'GET' && pathname === '/v1/session') return 'SessionResponse';
+    if (method === 'POST' && pathname === '/v1/global-profile') return 'GlobalProfileResponse';
     if (method === 'GET' && pathname === '/v1/accounts') return 'AccountsResponse';
     if (method === 'GET' && pathname === '/v1/profiles') return 'AutomationProfilesResponse';
     if (method === 'GET' && pathname === '/v1/summary') return 'SummaryResponse';

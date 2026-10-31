@@ -6,6 +6,7 @@ interface Props {
   account?: Account;
   selected?: boolean;
   loading?: boolean;
+  globalProfileKey?: string | null;
 }
 
 const channelNames = { whatsapp: 'WhatsApp', telegram: 'Telegram' } as const;
@@ -39,7 +40,7 @@ function accessLabel(policy: Conversation['control']['accessPolicy']) {
   return 'Neutro';
 }
 
-export function ConversationDetails({ conversation, account, selected = false, loading = false }: Props) {
+export function ConversationDetails({ conversation, account, globalProfileKey, selected = false, loading = false }: Props) {
   if (!conversation) {
     return (
       <aside className="context-column" aria-label="Información del contacto">
@@ -74,7 +75,7 @@ export function ConversationDetails({ conversation, account, selected = false, l
         <div><dt>Estado del canal</dt><dd>{account ? accountStatusNames[account.status] : 'No disponible'}</dd></div>
         <div><dt>Permiso</dt><dd>{accessLabel(conversation.control.accessPolicy)}</dd></div>
         <div><dt>Atención</dt><dd>{modeLabel(conversation.control.automationMode)}</dd></div>
-        <div><dt>Perfil IA</dt><dd>{conversation.control.profileKey || 'Heredado del sistema'}</dd></div>
+        <div><dt>Perfil IA</dt><dd>{conversation.control.profileKey ? `${conversation.control.profileKey} · propio` : globalProfileKey ? `${globalProfileKey} · heredado del sistema` : 'Heredado del sistema'}</dd></div>
         <div><dt>Estado</dt><dd>{conversation.control.lifecycle === 'open' ? 'Abierta' : 'Resuelta'}</dd></div>
         <div><dt>Mensajes sin leer</dt><dd>{conversation.unreadCount}</dd></div>
         <div><dt>Cobertura</dt><dd>{coverageLabel(conversation)}</dd></div>

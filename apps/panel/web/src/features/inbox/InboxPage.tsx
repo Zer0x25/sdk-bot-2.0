@@ -720,6 +720,7 @@ export function InboxPage() {
       <ConversationDetails
         conversation={selectedConversation}
         account={selectedAccount}
+        globalProfileKey={sessionQuery.data?.policy.globalProfileKey}
         selected={Boolean(conversationId)}
         loading={Boolean(conversationId) && conversationQuery.isLoading}
       />
