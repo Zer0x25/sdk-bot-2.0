@@ -5,6 +5,14 @@ based on [Conventional Commits](https://www.conventionalcommits.org/) and this
 file is maintained automatically by
 [release-please](https://github.com/googleapis/release-please).
 
+## [0.8.0](https://github.com/Zer0x25/sdk-bot-2.0/compare/v0.7.0...v0.8.0) (2026-10-31)
+
+
+### Features
+
+* add isolated inbox simulator ([701ad42](https://github.com/Zer0x25/sdk-bot-2.0/commit/701ad42809b099cf791e95dcfe3dfebc87e1fe6e))
+* add isolated inbox simulator and isolate control service tests ([8582a06](https://github.com/Zer0x25/sdk-bot-2.0/commit/8582a06a3582af30677a93b39533d4a7684302b8))
+
 ## [0.7.0](https://github.com/Zer0x25/sdk-bot-2.0/compare/v0.6.2...v0.7.0) (2026-10-29)
 
 
