@@ -1,5 +1,9 @@
 process.env.SDK_BOT_TEST = '1';
-const { test } = require('node:test');
+process.env.BRAIN_API_KEY = 'test-only-no-provider';
+const { withTempDbPaths } = require('./helpers/tmpPaths');
+const testPaths = withTempDbPaths();
+const { test, after } = require('node:test');
+after(() => testPaths.restore());
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
@@ -11,8 +15,14 @@ const { createControlService, LEGACY_ADMIN_ACTOR } = require('../services/conver
 const { createSessionApi, capabilityFor, projectConversation } = require('../services/sessionApi');
 const ChannelAdapter = require('../core/ChannelAdapter');
 const { setControlService } = require('../services/stateService');
-const { state } = require('../config');
+const { state, CONTACTS_FILE_PATH, SETTINGS_FILE_PATH, BRAIN_API_KEY } = require('../config');
 const chatControlCommands = require('../handlers/commands/chatControl');
+
+test('control service tests load isolated runtime configuration before imports', () => {
+    assert.equal(CONTACTS_FILE_PATH, path.join(testPaths.tmpDir, 'contacts_db.json'));
+    assert.equal(SETTINGS_FILE_PATH, path.join(testPaths.tmpDir, 'settings_db.json'));
+    assert.equal(BRAIN_API_KEY, 'test-only-no-provider');
+});
 
 async function fixture(t, phones = ['111','222']) {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sdkbot-control-service-'));

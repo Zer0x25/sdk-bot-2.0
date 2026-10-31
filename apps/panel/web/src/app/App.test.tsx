@@ -89,7 +89,7 @@ function jsonResponse(value: unknown, status = 200) {
   });
 }
 
-function installApiMock(options: { empty?: boolean; listError?: boolean; pagination?: boolean; listPagination?: boolean; cursorExpired?: boolean; media?: boolean; mediaAvailable?: boolean; assistant?: boolean; assistantOlderReference?: boolean; reconciliation?: boolean; reconciliationExisting?: boolean } = {}) {
+function installApiMock(options: { empty?: boolean; listError?: boolean; pagination?: boolean; listPagination?: boolean; cursorExpired?: boolean; media?: boolean; mediaAvailable?: boolean; assistant?: boolean; assistantOlderReference?: boolean; reconciliation?: boolean; reconciliationExisting?: boolean; twoConversations?: boolean } = {}) {
   let markedRead = false;
   let sentBody: { text?: string; clientMessageId?: string } | null = options.reconciliationExisting
     ? { text: 'respuesta que quedó incierta', clientMessageId: '11111111-1111-4111-8111-111111111111' } : null;
@@ -135,10 +135,16 @@ function installApiMock(options: { empty?: boolean; listError?: boolean; paginat
         return jsonResponse({ items: [secondConversation], nextCursor: null, snapshot });
       }
       return jsonResponse({
-        items: options.empty ? [] : [projectedConversation()],
+        items: options.empty ? [] : [projectedConversation(), ...(options.twoConversations ? [secondConversation] : [])],
         nextCursor: options.listPagination ? 'opaque-conversation-cursor' : options.cursorExpired ? 'expired-conversation-cursor' : null,
         snapshot
       });
+    }
+    if (options.twoConversations && url.pathname === `/api/v1/conversations/${secondConversation.id}`) {
+      return jsonResponse({ conversation: { ...secondConversation, control: projectedConversation().control }, channelCapabilities: capabilities, snapshot });
+    }
+    if (options.twoConversations && url.pathname === `/api/v1/conversations/${secondConversation.id}/messages`) {
+      return jsonResponse({ items: [], nextCursor: null, snapshot });
     }
     if (url.pathname === `/api/v1/conversations/${conversationId}/read`) {
       markedRead = true;
@@ -280,6 +286,20 @@ afterEach(() => {
 });
 
 describe('inbox shell and real API integration', () => {
+  it('keeps drafts isolated when switching between conversations', async () => {
+    installApiMock({ reconciliation: true, twoConversations: true });
+    const user = userEvent.setup();
+    renderApp(`/inbox/${conversationId}`);
+
+    const composer = await screen.findByRole('textbox', { name: 'Escribir mensaje' });
+    await user.type(composer, 'Private message for Ana');
+    await user.click(screen.getByRole('link', { name: /Lucía Ruiz/ }));
+    await waitFor(() => expect(window.location.pathname).toContain(secondConversation.id));
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Escribir mensaje' })).toHaveValue(''));
+    await user.click(screen.getByRole('link', { name: /Ana Pérez/ }));
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Escribir mensaje' })).toHaveValue(''));
+  });
+
   it('finds an unresolved delivery again after opening the conversation', async () => {
     const fetchMock = installApiMock({ reconciliation: true, reconciliationExisting: true });
     const user = userEvent.setup();
@@ -293,6 +313,23 @@ describe('inbox shell and real API integration', () => {
     expect(within(panel).getByText('respuesta que quedó incierta')).toBeInTheDocument();
     expect(fetchMock.mock.calls.filter(([input, init]) => new URL(String(input), 'http://panel.local').pathname
       === `/api/v1/conversations/${conversationId}/messages` && init?.method === 'POST')).toHaveLength(0);
+  });
+
+  it('shows a persisted uncertain delivery after the page is remounted', async () => {
+    const fetchMock = installApiMock({ reconciliation: true });
+    const user = userEvent.setup();
+    const view = renderApp(`/inbox/${conversationId}`);
+    await user.type(await screen.findByRole('textbox', { name: 'Escribir mensaje' }), 'Mensaje con entrega incierta');
+    await user.click(screen.getByRole('button', { name: 'Enviar mensaje' }));
+    await screen.findByRole('button', { name: 'Conciliar antes de enviar otra vez' });
+
+    view.unmount();
+    renderApp(`/inbox/${conversationId}`);
+    await user.click(await screen.findByRole('button', { name: 'Revisar entregas' }));
+    const panel = await screen.findByRole('region', { name: 'Conciliar entregas inciertas' });
+    expect(await within(panel).findByText('Mensaje con entrega incierta')).toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([input, init]) => new URL(String(input), 'http://panel.local').pathname
+      === `/api/v1/conversations/${conversationId}/messages` && init?.method === 'POST')).toHaveLength(1);
   });
 
   it('reconciles an uncertain operator delivery before allowing another send', async () => {
